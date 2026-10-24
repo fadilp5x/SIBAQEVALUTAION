@@ -1,0 +1,4 @@
+project_id = "sibaq-aliyah-reviewer"
+
+[functions.evaluate-submission]
+verify_jwt = true
