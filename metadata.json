@@ -1,0 +1,8 @@
+{
+  "name": "SIBĀQ Review Studio",
+  "description": "AI-assisted SIBĀQ '26 Aliyah X/O programme review and student performance tracker.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

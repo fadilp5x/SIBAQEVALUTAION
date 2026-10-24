@@ -188,7 +188,17 @@ export default function App() {
       setAssessments(prev => [assessment, ...prev])
       return assessment
     }
-    throw new Error('This preview is not connected to a database or AI evaluator. Configure Supabase and deploy the included evaluate-submission Edge Function before scoring real work.')
+    const id = input.assessmentId || localId()
+    const first = students.find(s => s.id === input.studentIds[0]) || { id: input.studentIds[0], full_name: 'Student' }
+    const assessment: Assessment = {
+      id, student_id: first.id, student_ids: input.studentIds, student_name: input.studentIds.map(sid => students.find(s => s.id === sid)?.full_name).filter(Boolean).join(', '),
+      program_code: input.program.code, program_name: input.program.name, category: input.program.category, ai_score: Math.round(input.result.total_score), final_score: null,
+      confidence: input.result.confidence, summary: input.result.summary, breakdown: input.result.criterion_breakdown, strengths: input.result.strengths, improvements: input.result.improvements,
+      evidence_flags: [...input.result.evidence_flags, ...input.result.missing_evidence], needs_more_evidence: input.result.needs_more_evidence, topic: input.topic, created_at: isoNow(),
+      review_status: 'AI suggested', team_assessment: input.program.type === 'team'
+    }
+    setAssessments(prev => [assessment, ...prev])
+    return assessment
   }
 
   if (!authReady) return <div className="loading-screen"><div className="brand-mark large">S</div><div className="loading-title">Preparing Review Studio</div><div className="spinner" /></div>
@@ -211,7 +221,7 @@ export default function App() {
       <nav className="nav-list">{NAV.map(item => { const Icon = item.icon; return <button key={item.id} className={`nav-item ${currentView===item.id?'active':''}`} onClick={()=>navigate(item.id)}><Icon size={18}/><span>{item.label}</span>{item.id==='review' && <span className="nav-dot"/>}</button> })}</nav>
       <div className="sidebar-spacer"/>
       <div className="source-card"><div className="source-icon"><BookOpen size={17}/></div><div><strong>Official source</strong><span>SIBĀQ ’26 concept note</span></div><a href="/docs/sibaq-26-concept-note.pdf" target="_blank" rel="noreferrer" aria-label="Open concept note"><ArrowRight size={15}/></a></div>
-      <div className="sidebar-bottom"><div className="reviewer-avatar">{initials(selectedName)}</div><div className="reviewer-info"><strong>{selectedName}</strong><span>{hasSupabaseConfig ? 'Reviewer account' : 'Local preview mode'}</span></div>{supabase && session && <button className="icon-button sidebar-logout" title="Sign out" onClick={()=>void supabase.auth.signOut()}><LogOut size={16}/></button>}</div>
+      <div className="sidebar-bottom"><div className="reviewer-avatar">{initials(selectedName)}</div><div className="reviewer-info"><strong>{selectedName}</strong><span>{hasSupabaseConfig ? 'Reviewer account' : 'Local preview mode'}</span></div>{supabase && session && <button className="icon-button sidebar-logout" title="Sign out" onClick={()=>void supabase?.auth.signOut()}><LogOut size={16}/></button>}</div>
     </aside>
     {mobileNav && <button aria-label="Close navigation" className="mobile-shade" onClick={()=>setMobileNav(false)} />}
     <main className="main-area">
@@ -219,7 +229,7 @@ export default function App() {
       {globalNotice && <div className={`global-notice ${globalNotice.toLowerCase().includes('failed')||globalNotice.toLowerCase().includes('could not')||globalNotice.toLowerCase().includes('error')?'is-error':''}`}><span>{globalNotice}</span><button onClick={()=>setGlobalNotice('')}><X size={14}/></button></div>}
       {!hasSupabaseConfig && <div className="preview-banner"><div className="preview-banner-icon"><ShieldCheck size={17}/></div><div><strong>Local preview only</strong><span>Students you add are saved in this browser. AI evaluation and shared database storage stay disabled until you configure Supabase and the Gemini Edge Function.</span></div><button onClick={()=>navigate('settings')}>Set up cloud <ArrowRight size={14}/></button></div>}
       {currentView==='dashboard' && <Dashboard students={students} assessments={assessments} onNavigate={navigate} onConfirm={confirmAssessment} />}
-      {currentView==='review' && <NewReview students={students} onAddStudent={addStudent} onSave={saveAssessment} configured={Boolean(hasSupabaseConfig && session)} onNavigate={navigate} />}
+      {currentView==='review' && <NewReview students={students} session={session} onAddStudent={addStudent} onSave={saveAssessment} configured={Boolean(hasSupabaseConfig && session)} onNavigate={navigate} />}
       {currentView==='students' && <StudentsPage students={students} assessments={assessments} onAddStudent={addStudent} onNavigate={navigate} />}
       {currentView==='history' && <HistoryPage assessments={assessments} onConfirm={confirmAssessment} />}
       {currentView==='programs' && <ProgramsPage onReview={(code)=>{ window.history.replaceState({},'','#review-'+code); navigate('review'); }} />}
@@ -275,7 +285,7 @@ function Dashboard({students, assessments, onNavigate, onConfirm}:{students:Stud
 function StatCard({label,value,detail,icon:Icon,color}:{label:string;value:string|number;detail:string;icon:any;color:string}) { return <div className="stat-card"><div className={`stat-icon ${color}`}><Icon size={19}/></div><div className="stat-main"><span>{label}</span><strong>{value}</strong><small>{detail}</small></div><div className="stat-spark"><ArrowDownRight size={15}/></div></div> }
 function EmptyState({icon:Icon,title,message,action,onClick}:{icon:any;title:string;message:string;action?:string;onClick?:()=>void}) { return <div className="empty-state"><div className="empty-icon"><Icon size={23}/></div><strong>{title}</strong><p>{message}</p>{action&&onClick&&<button className="small-link" onClick={onClick}>{action} <ArrowRight size={14}/></button>}</div> }
 
-function NewReview({students,onAddStudent,onSave,configured,onNavigate}:{students:Student[];onAddStudent:(n:string,a:string,c:string)=>Promise<void>;onSave:(p:{studentIds:string[];program:Program;topic:string;result:EvaluationResult;files:File[];reviewerNotes:string;evidencePaths:string[];assessmentId:string})=>Promise<Assessment>;configured:boolean;onNavigate:(v:View)=>void}) {
+function NewReview({students,session,onAddStudent,onSave,configured,onNavigate}:{students:Student[];session:any;onAddStudent:(n:string,a:string,c:string)=>Promise<void>;onSave:(p:{studentIds:string[];program:Program;topic:string;result:EvaluationResult;files:File[];reviewerNotes:string;evidencePaths:string[];assessmentId:string})=>Promise<Assessment>;configured:boolean;onNavigate:(v:View)=>void}) {
   const [programCode,setProgramCode] = useState(()=>window.location.hash.startsWith('#review-')?window.location.hash.slice(8):'')
   const [studentIds,setStudentIds] = useState<string[]>([])
   const [topic,setTopic] = useState('')
@@ -325,7 +335,8 @@ function NewReview({students,onAddStudent,onSave,configured,onNavigate}:{student
       const evidence=[] as Array<{name:string;mimeType:string;signedUrl:string;sizeBytes:number}>
       for (const file of files) {
         const sanitized = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-        const path = `${session.user.id}/${reviewId}/${Date.now()}-${sanitized}`
+        const userId = session?.user?.id ?? 'reviewer'
+        const path = `${userId}/${reviewId}/${Date.now()}-${sanitized}`
         const uploaded = await supabase.storage.from('review-evidence').upload(path, file, { contentType: inferredMimeType(file), upsert: false })
         if (uploaded.error) throw new Error(`Evidence upload failed (${file.name}): ${uploaded.error.message}`)
         uploadedNow.push(path)
